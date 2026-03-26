@@ -66,7 +66,7 @@ export default async function DashboardPrestadorPage({
   })
 
   const categoriasFiltro = prestador.categorias.length > 0
-    ? [...new Set([...prestador.categorias])]
+    ? Array.from(new Set(prestador.categorias))
     : ['LIMPEZA', 'CONTABILIDADE', 'IT', 'RH', 'MARKETING']
 
   return (
