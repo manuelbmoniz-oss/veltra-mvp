@@ -1,0 +1,269 @@
+// Veltra Business Solutions — Prisma Schema
+// Deploy target: Supabase (PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum TipoEmpresa {
+  CLIENTE
+  PRESTADOR
+  AMBOS
+}
+
+enum StatusEmpresa {
+  PENDENTE    // aguarda confirmação de email
+  ATIVO
+  SUSPENSO
+}
+
+enum CategoriaServico {
+  LIMPEZA
+  CONTABILIDADE
+  IT
+  RH
+  MARKETING
+}
+
+enum StatusPedido {
+  ABERTO
+  ADJUDICADO
+  CONCLUIDO
+  CANCELADO
+}
+
+enum StatusProposta {
+  PENDENTE
+  ADJUDICADA
+  REJEITADA
+}
+
+enum CarregadaPor {
+  PRESTADOR
+  CLIENTE
+}
+
+enum TipoRating {
+  CLIENTE_AVALIA_PRESTADOR
+  PRESTADOR_AVALIA_CLIENTE
+}
+
+// ─── Autenticação (NextAuth) ───────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Utilizador ───────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  image         String?
+  empresaId     String?   @unique
+
+  accounts Account[]
+  sessions Session[]
+  empresa  Empresa?  @relation(fields: [empresaId], references: [id])
+
+  // Tokens de confirmação de email para registo
+  emailTokens EmailToken[]
+}
+
+model EmailToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  usado     Boolean  @default(false)
+  criadoEm DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── Empresa ──────────────────────────────────────────────────────────────────
+
+model Empresa {
+  id        String        @id @default(cuid())
+  nif       String        @unique
+  nome      String
+  cae       String?
+  morada    String?
+  email     String        @unique
+  telefone  String?
+  tipo      TipoEmpresa
+  status    StatusEmpresa @default(PENDENTE)
+  criadoEm DateTime      @default(now())
+
+  user     User?
+  prestador Prestador?
+
+  // Relações como cliente
+  pedidosCliente Pedido[]   @relation("PedidosCliente")
+  faturasCliente Fatura[]   @relation("FaturasCliente")
+  ratingsAvaliador Rating[] @relation("RatingsAvaliador")
+  ratingsAvaliado  Rating[] @relation("RatingsAvaliado")
+}
+
+// ─── Prestador ────────────────────────────────────────────────────────────────
+
+model Prestador {
+  id               String             @id @default(cuid())
+  empresaId        String             @unique
+  categorias       CategoriaServico[]
+  raioKm           Int?               // null = cobertura nacional
+  ratingGlobal     Float?
+  totalAvaliacoes  Int                @default(0)
+
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  propostas Proposta[]
+  faturas   Fatura[]   @relation("FaturasPrestador")
+}
+
+// ─── Pedido ───────────────────────────────────────────────────────────────────
+
+model Pedido {
+  id              String           @id @default(cuid())
+  empresaClienteId String
+  categoria       CategoriaServico
+  titulo          String
+  descricao       String           @db.Text
+  localizacao     String
+  latLng          String?          // "lat,lng" para cálculo de distância (futuro)
+  status          StatusPedido     @default(ABERTO)
+  criadoEm       DateTime         @default(now())
+  atualizadoEm   DateTime         @updatedAt
+
+  empresaCliente Empresa    @relation("PedidosCliente", fields: [empresaClienteId], references: [id])
+  propostas      Proposta[]
+  faturas        Fatura[]
+  anexos         Anexo[]
+}
+
+// ─── Anexo (ficheiros do pedido) ──────────────────────────────────────────────
+
+model Anexo {
+  id        String   @id @default(cuid())
+  pedidoId  String
+  nome      String
+  url       String
+  tamanho   Int?
+  criadoEm DateTime @default(now())
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+}
+
+// ─── Proposta ─────────────────────────────────────────────────────────────────
+
+model Proposta {
+  id                  String         @id @default(cuid())
+  pedidoId            String
+  prestadorId         String
+  preco               Float
+  dataInicio          DateTime
+  dataConclusao       DateTime
+  validadeProposta    DateTime?
+  descricaoAbordagem  String?        @db.Text
+  observacoes         String?        @db.Text
+  status              StatusProposta @default(PENDENTE)
+  criadoEm           DateTime       @default(now())
+  atualizadoEm       DateTime       @updatedAt
+
+  pedido    Pedido    @relation(fields: [pedidoId], references: [id])
+  prestador Prestador @relation(fields: [prestadorId], references: [id])
+  faturas   Fatura[]
+}
+
+// ─── Fatura ───────────────────────────────────────────────────────────────────
+
+model Fatura {
+  id            String       @id @default(cuid())
+  pedidoId      String
+  propostaId    String
+  prestadorId   String
+  clienteId     String
+  numeroFatura  String
+  valor         Float
+  ficheiroUrl   String?
+  carregadaPor  CarregadaPor?
+  confirmada    Boolean      @default(false)
+  criadoEm     DateTime     @default(now())
+  confirmadaEm DateTime?
+
+  pedido    Pedido    @relation(fields: [pedidoId], references: [id])
+  proposta  Proposta  @relation(fields: [propostaId], references: [id])
+  prestador Prestador @relation("FaturasPrestador", fields: [prestadorId], references: [id])
+  cliente   Empresa   @relation("FaturasCliente", fields: [clienteId], references: [id])
+  ratings   Rating[]
+}
+
+// ─── Rating ───────────────────────────────────────────────────────────────────
+
+model Rating {
+  id                    String     @id @default(cuid())
+  faturaId              String
+  avaliadorId           String
+  avaliadoId            String
+  tipo                  TipoRating
+
+  // Dimensões comuns (prestador e cliente)
+  qualidade             Float?     // 1-5
+  prazos                Float?     // 1-5
+  fidelidadeOrcamental  Float?     // 1-5
+
+  // Dimensões exclusivas do cliente (quando prestador avalia cliente)
+  pontualidadePagamento Float?     // 1-5
+  clareza               Float?     // 1-5
+  facilidadeColaboracao Float?     // 1-5
+
+  mediaPonderada        Float?
+  criadoEm            DateTime   @default(now())
+
+  fatura    Fatura  @relation(fields: [faturaId], references: [id])
+  avaliador Empresa @relation("RatingsAvaliador", fields: [avaliadorId], references: [id])
+  avaliado  Empresa @relation("RatingsAvaliado", fields: [avaliadoId], references: [id])
+
+  @@unique([faturaId, avaliadorId])
+}
