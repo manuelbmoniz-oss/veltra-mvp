@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { simulateATValidation } from '@/lib/at-validation'
 import { prisma } from '@/lib/prisma'
