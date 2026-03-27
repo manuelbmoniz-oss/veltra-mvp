@@ -1,13 +1,15 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 const FROM = 'Veltra Business Solutions <noreply@veltra.pt>'
+
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY || 're_placeholder')
+}
 
 export async function sendEmailConfirmacao(to: string, nome: string, token: string) {
   const url = `${process.env.NEXTAUTH_URL}/api/verificar?token=${token}`
 
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: 'Confirme o seu email — Veltra Business Solutions',
@@ -57,7 +59,7 @@ export async function sendNotificacaoFatura(
   numeroPedido: string,
   nomePrestador: string
 ) {
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: `Fatura disponível para confirmação — Pedido #${numeroPedido}`,
@@ -95,7 +97,7 @@ export async function sendNotificacaoAdjudicacao(
   tituloPedido: string,
   pedidoId: string
 ) {
-  return resend.emails.send({
+  return getResend().emails.send({
     from: FROM,
     to,
     subject: `A sua proposta foi adjudicada — ${tituloPedido}`,
